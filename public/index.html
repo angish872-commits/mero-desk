@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#07101d" />
+  <title>Metrodex — AI Compute in Minutes</title>
+  <meta name="description" content="Metrodex MVP: launch a short AI compute session on a local GPU server and chat with the selected model." />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Metrodex home">
+      <span class="brand-mark">M</span>
+      <span>Metrodex</span>
+    </a>
+    <nav class="nav" aria-label="Primary navigation">
+      <a href="#home" class="active">Home</a>
+      <a href="#compute">Compute</a>
+      <a href="#about">About</a>
+    </nav>
+    <button id="loginButton" class="login-button" type="button">Login</button>
+  </header>
+
+  <main id="home" class="page-shell">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">MERO DESK • CLASS MVP</div>
+        <h1>Rent AI compute.<br><span>Instantly.</span></h1>
+        <p>
+          Launch a temporary GPU session, choose your AI runtime, and chat with the model
+          directly from one clean workspace.
+        </p>
+      </div>
+      <div class="hero-status">
+        <span class="live-dot"></span>
+        <span>Local compute network</span>
+      </div>
+    </section>
+
+    <section id="compute" class="workspace">
+      <div class="left-column">
+        <article class="card server-card">
+          <div class="card-header">
+            <div>
+              <div class="section-kicker">COMPUTE NODE</div>
+              <h2>Metrodex GPU-01</h2>
+            </div>
+            <span id="serverStatus" class="status available">AVAILABLE</span>
+          </div>
+
+          <div class="gpu-block">
+            <div class="gpu-art" aria-hidden="true">
+              <div class="gpu-fan fan-one"></div>
+              <div class="gpu-fan fan-two"></div>
+              <div class="gpu-label">RTX</div>
+            </div>
+            <div class="spec-grid">
+              <div class="spec"><span>GPU</span><strong>NVIDIA RTX 3060</strong></div>
+              <div class="spec"><span>VRAM</span><strong>12 GB</strong></div>
+              <div class="spec"><span>RAM</span><strong>32 GB</strong></div>
+              <div class="spec"><span>CPU</span><strong>Intel Core i7</strong></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="card launch-card">
+          <div class="section-kicker">LAUNCH INSTANCE</div>
+
+          <div class="field-group">
+            <label class="field-label">Choose runtime</label>
+            <div class="runtime-grid">
+              <button class="runtime-option active" data-runtime="llama.cpp" type="button">
+                <span class="runtime-icon">◫</span>
+                <span><strong>llama.cpp</strong><small>Local AI model</small></span>
+              </button>
+              <button class="runtime-option" data-runtime="openai" type="button">
+                <span class="runtime-icon">✦</span>
+                <span><strong>OpenAI</strong><small>Cloud AI</small></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Session duration</label>
+            <div class="duration-grid">
+              <button class="duration-option active" data-minutes="1" type="button">1 min</button>
+              <button class="duration-option" data-minutes="2" type="button">2 min</button>
+              <button class="duration-option" data-minutes="3" type="button">3 min</button>
+              <button class="duration-option" data-minutes="5" type="button">5 min</button>
+            </div>
+          </div>
+
+          <button id="launchButton" class="launch-button" type="button">
+            <span class="play">▶</span>
+            <span>Launch instance</span>
+          </button>
+          <p id="launchNote" class="inline-note">Sign in once, then launch the server.</p>
+        </article>
+      </div>
+
+      <article class="card chat-card">
+        <div class="chat-header">
+          <div class="chat-title-wrap">
+            <div class="chat-icon">◌</div>
+            <div>
+              <div class="section-kicker">AI WORKSPACE</div>
+              <h2>AI Chat</h2>
+            </div>
+          </div>
+          <div class="chat-meta">
+            <span id="chatRuntime" class="runtime-pill">Not running</span>
+            <strong id="countdown" class="countdown">--:--</strong>
+            <button id="endButton" class="end-button hidden" type="button">End</button>
+          </div>
+        </div>
+
+        <div id="emptyState" class="empty-state">
+          <div class="bubble-art"><span></span><span></span></div>
+          <h3>Start a compute session</h3>
+          <p>Launch an instance to begin chatting with your selected AI runtime.</p>
+        </div>
+
+        <div id="messages" class="messages hidden" aria-live="polite"></div>
+
+        <form id="chatForm" class="composer">
+          <textarea id="prompt" rows="1" maxlength="4000" placeholder="Type your message..." disabled></textarea>
+          <button id="sendButton" class="send-button" type="submit" disabled aria-label="Send message">➤</button>
+        </form>
+        <div id="chatNote" class="chat-note"></div>
+      </article>
+    </section>
+
+    <section id="about" class="about-strip">
+      <div>
+        <div class="section-kicker">MVP IDEA</div>
+        <h2>One machine. Temporary access. Simple AI compute.</h2>
+      </div>
+      <div class="about-flow">
+        <span>01 Login</span>
+        <i>→</i>
+        <span>02 Launch</span>
+        <i>→</i>
+        <span>03 Chat</span>
+        <i>→</i>
+        <span>04 Expire</span>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="loginDialog" class="login-dialog">
+    <form id="loginForm" method="dialog" class="login-panel">
+      <button id="closeLogin" class="close-login" type="button" aria-label="Close">×</button>
+      <div class="brand login-brand"><span class="brand-mark">M</span><span>Metrodex</span></div>
+      <h2>Demo login</h2>
+      <p>This class MVP only needs a lightweight local demo identity.</p>
+
+      <label for="name">Name</label>
+      <input id="name" name="name" autocomplete="name" placeholder="Your name" required />
+
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+
+      <button class="launch-button" type="submit">Continue to Metrodex</button>
+    </form>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>
