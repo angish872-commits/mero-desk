@@ -35,10 +35,10 @@ await loadEnvFile();
 const PORT = Number(process.env.PORT || 3000);
 const LLAMA_URL = (process.env.LLAMA_URL || "").replace(/\/$/, "");
 const LLAMA_MODEL = process.env.LLAMA_MODEL || "local-model";
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.6-luna";
-const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
-const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || "";
+const OPENCODE_API_KEY = process.env.OPENCODE_API_KEY || "";
+const OPENCODE_MODEL = process.env.OPENCODE_MODEL || "gpt-5.6-luna";
+const SUPABASE_STATE_URL = (process.env.SUPABASE_STATE_URL || "https://fjzoyuovtadmjdvrline.supabase.co/functions/v1/metrodex-state").replace(/\/$/, "");
+
 
 const SERVER = {
   id: "metrodex-gpu-01",
@@ -71,97 +71,44 @@ async function readJson(req) {
   return raw ? JSON.parse(raw) : {};
 }
 
-function supabaseEnabled() {
-  return Boolean(SUPABASE_URL && SUPABASE_SECRET_KEY);
-}
-
-async function supabase(pathname, { method = "GET", body, prefer } = {}) {
-  if (!supabaseEnabled()) return null;
-
-  const headers = {
-    apikey: SUPABASE_SECRET_KEY,
-    "Content-Type": "application/json",
-  };
-  if (prefer) headers.Prefer = prefer;
-
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${pathname}`, {
+async function liveState(action = "status", { method = "GET", body } = {}) {
+  const separator = SUPABASE_STATE_URL.includes("?") ? "&" : "?";
+  const response = await fetch(`${SUPABASE_STATE_URL}${separator}action=${encodeURIComponent(action)}`, {
     method,
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Supabase ${response.status}: ${detail.slice(0, 300)}`);
+    throw new Error(data.error || `Live Supabase state returned HTTP ${response.status}`);
   }
-
-  if (response.status === 204) return null;
-  const text = await response.text();
-  return text ? JSON.parse(text) : null;
-}
-
-async function persistSession(session) {
-  if (!supabaseEnabled()) return;
-  await supabase("compute_sessions", {
-    method: "POST",
-    prefer: "return=minimal",
-    body: {
-      id: session.id,
-      server_id: SERVER.id,
-      user_label: session.userLabel,
-      runtime: session.runtime,
-      duration_minutes: session.durationMinutes,
-      status: session.status,
-      started_at: new Date(session.startedAt).toISOString(),
-      expires_at: new Date(session.expiresAt).toISOString(),
-    },
-  });
-  await setPersistedServerStatus("BUSY");
-}
-
-async function updatePersistedSession(session, status) {
-  if (!supabaseEnabled()) return;
-  const endedAt = new Date().toISOString();
-  await supabase(`compute_sessions?id=eq.${encodeURIComponent(session.id)}`, {
-    method: "PATCH",
-    prefer: "return=minimal",
-    body: { status, ended_at: endedAt },
-  });
-  await setPersistedServerStatus("AVAILABLE");
-}
-
-async function setPersistedServerStatus(status) {
-  if (!supabaseEnabled()) return;
-  await supabase(`servers?id=eq.${encodeURIComponent(SERVER.id)}`, {
-    method: "PATCH",
-    prefer: "return=minimal",
-    body: { status, updated_at: new Date().toISOString() },
-  });
+  return data;
 }
 
 async function persistMessage(sessionId, role, content) {
-  if (!supabaseEnabled()) return;
-  await supabase("chat_messages", {
+  await liveState("message", {
     method: "POST",
-    prefer: "return=minimal",
-    body: {
-      id: crypto.randomUUID(),
-      session_id: sessionId,
-      role,
-      content,
-    },
+    body: { sessionId, role, content },
   });
 }
 
 async function expireIfNeeded() {
-  if (currentSession && currentSession.expiresAt <= Date.now()) {
-    const expired = currentSession;
-    currentSession = null;
-    try {
-      await updatePersistedSession(expired, "EXPIRED");
-    } catch (error) {
-      console.error("Could not persist expiry:", error.message);
-    }
+  try {
+    const state = await liveState("status");
+    currentSession = state.session
+      ? {
+          id: state.session.id,
+          userLabel: state.session.user_label,
+          runtime: state.session.runtime,
+          durationMinutes: state.session.duration_minutes,
+          status: state.session.status,
+          startedAt: new Date(state.session.started_at).getTime(),
+          expiresAt: new Date(state.session.expires_at).getTime(),
+        }
+      : null;
+  } catch (error) {
+    console.error("Live Supabase status unavailable:", error.message);
   }
 }
 
@@ -211,34 +158,34 @@ async function askLlama(message) {
   return { text, demo: false };
 }
 
-async function askOpenAI(message) {
-  if (!OPENAI_API_KEY) {
+async function askOpenCode(message) {
+  if (!OPENCODE_API_KEY) {
     return {
-      text: "OpenAI is not connected yet. Put OPENAI_API_KEY in .env.local to enable the cloud runtime.",
+      text: "OpenCode Go is not connected yet. Put OPENCODE_API_KEY in .env.local to enable the cloud runtime.",
       demo: true,
     };
   }
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch("https://opencode.ai/zen/go/v1/responses", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${OPENCODE_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: OPENAI_MODEL,
+      model: OPENCODE_MODEL,
       input: message,
     }),
   });
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`OpenAI ${response.status}: ${detail.slice(0, 240)}`);
+    throw new Error(`OpenCode ${response.status}: ${detail.slice(0, 240)}`);
   }
 
   const data = await response.json();
   const text = extractOpenAIText(data);
-  if (!text) throw new Error("OpenAI returned no text");
+  if (!text) throw new Error("OpenCode returned no text");
   return { text, demo: false };
 }
 
@@ -284,9 +231,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/api/health") {
       return json(res, 200, {
         ok: true,
-        persistence: supabaseEnabled() ? "supabase" : "memory",
+        persistence: "supabase-live",
         llamaConfigured: Boolean(LLAMA_URL),
-        openaiConfigured: Boolean(OPENAI_API_KEY),
+        opencodeConfigured: Boolean(OPENCODE_API_KEY),
       });
     }
 
@@ -301,51 +248,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/api/launch") {
-      if (currentSession) {
-        return json(res, 409, { error: "The server is already in use." });
-      }
-
-      const body = await readJson(req);
-      const durationMinutes = Number(body.durationMinutes);
-      const runtime = body.runtime;
-      const userLabel = String(body.userLabel || "demo-user").slice(0, 80);
-
-      if (![1, 2, 3, 5].includes(durationMinutes)) {
-        return json(res, 400, { error: "Duration must be 1, 2, 3, or 5 minutes." });
-      }
-      if (!["llama.cpp", "openai"].includes(runtime)) {
-        return json(res, 400, { error: "Unsupported runtime." });
-      }
-
-      currentSession = {
-        id: crypto.randomUUID(),
-        userLabel,
-        runtime,
-        durationMinutes,
-        status: "RUNNING",
-        startedAt: Date.now(),
-        expiresAt: Date.now() + durationMinutes * 60_000,
-      };
-
-      try {
-        await persistSession(currentSession);
-      } catch (error) {
-        console.error("Supabase persistence failed; continuing in memory:", error.message);
-      }
-
-      return json(res, 201, { session: currentSession });
-    }
-
-    if (req.method === "POST" && req.url === "/api/stop") {
-      if (currentSession) {
-        const stopped = currentSession;
-        currentSession = null;
-        try {
-          await updatePersistedSession(stopped, "STOPPED");
-        } catch (error) {
-          console.error("Could not persist stop:", error.message);
-        }
-      }
+      await liveState("stop", { method: "POST", body: {} });
+      currentSession = null;
       return json(res, 200, { ok: true });
     }
 
@@ -365,8 +269,8 @@ const server = http.createServer(async (req, res) => {
       await persistMessage(currentSession.id, "user", message).catch(() => {});
 
       const answer =
-        currentSession.runtime === "openai"
-          ? await askOpenAI(message)
+        currentSession.runtime === "opencode"
+          ? await askOpenCode(message)
           : await askLlama(message);
 
       await persistMessage(currentSession.id, "assistant", answer.text).catch(() => {});
@@ -383,5 +287,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Metrodex MVP: http://localhost:${PORT}`);
-  console.log(`Persistence: ${supabaseEnabled() ? "Supabase" : "memory fallback"}`);
+  console.log("Persistence: live Supabase Edge Function");
 });
