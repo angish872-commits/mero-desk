@@ -17,7 +17,7 @@ create table if not exists public.compute_sessions (
   id uuid primary key,
   server_id text not null references public.servers(id),
   user_label text not null default 'demo-user',
-  runtime text not null check (runtime in ('llama.cpp', 'openai')),
+  runtime text not null check (runtime in ('llama.cpp', 'opencode')),
   duration_minutes integer not null check (duration_minutes in (1, 2, 3, 5)),
   status text not null default 'RUNNING'
     check (status in ('RUNNING', 'EXPIRED', 'STOPPED', 'ERROR')),
