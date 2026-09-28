@@ -3,7 +3,9 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
+import { WebSocketServer } from "ws";
+import pty from "node-pty";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
@@ -39,6 +41,7 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || process.env.LLAMA_MODEL || "qwe
 const OPENCODE_BIN = process.env.OPENCODE_BIN || "/home/movefule/.opencode/bin/opencode";
 const OPENCODE_MODEL = process.env.OPENCODE_MODEL || "opencode/big-pickle";
 const OPENCODE_TIMEOUT_MS = Number(process.env.OPENCODE_TIMEOUT_MS || 45_000);
+const TERMINAL_ROOT = process.env.TERMINAL_ROOT || path.join(__dirname, "workspaces");
 const SUPABASE_STATE_URL = (process.env.SUPABASE_STATE_URL || "https://fjzoyuovtadmjdvrline.supabase.co/functions/v1/metrodex-state").replace(/\/$/, "");
 
 
@@ -223,6 +226,16 @@ async function serveStatic(req, res) {
   }
 }
 
+function terminalJson(ws, body) {
+  if (ws.readyState === 1) ws.send(JSON.stringify(body));
+}
+
+function closeTerminal(ws, ptyProcess, timer, reason = "session-ended") {
+  clearInterval(timer);
+  try { ptyProcess.kill(); } catch {}
+  if (ws.readyState === 1) ws.close(1000, reason);
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     await expireIfNeeded();
@@ -320,6 +333,99 @@ const server = http.createServer(async (req, res) => {
     console.error(error);
     return json(res, 500, { error: error.message || "Unexpected server error." });
   }
+});
+
+const terminalWss = new WebSocketServer({ noServer: true });
+
+terminalWss.on("connection", async (ws, req) => {
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const sessionId = url.searchParams.get("sessionId");
+  if (!sessionId) {
+    ws.close(1008, "sessionId is required");
+    return;
+  }
+
+  let state;
+  try {
+    state = await liveState("status");
+  } catch {
+    ws.close(1011, "session state unavailable");
+    return;
+  }
+  if (!state.session || state.session.id !== sessionId) {
+    ws.close(1008, "session is not active");
+    return;
+  }
+
+  const workspace = path.join(TERMINAL_ROOT, sessionId);
+  await mkdir(workspace, { recursive: true });
+  const shell = process.env.TERMINAL_SHELL || "/bin/bash";
+  const terminal = pty.spawn(shell, ["--noprofile", "--norc", "-i"], {
+    name: "xterm-256color",
+    cols: 120,
+    rows: 32,
+    cwd: workspace,
+    env: {
+      ...process.env,
+      TERM: "xterm-256color",
+      MERO_DESK_SESSION_ID: sessionId,
+    },
+  });
+
+  const expiryTimer = setInterval(async () => {
+    try {
+      const latest = await liveState("status");
+      if (!latest.session || latest.session.id !== sessionId) {
+        terminalJson(ws, {
+          type: "expired",
+          message: "Mero Desk session ended. The terminal is now closed.",
+        });
+        closeTerminal(ws, terminal, expiryTimer);
+      }
+    } catch {
+      // Keep the terminal alive through a transient status read failure.
+    }
+  }, 2_000);
+
+  terminal.onData((data) => {
+    if (ws.readyState === 1) ws.send(data);
+  });
+  terminal.onExit(() => {
+    clearInterval(expiryTimer);
+    if (ws.readyState === 1) ws.close(1000, "terminal exited");
+  });
+
+  ws.on("message", (raw) => {
+    try {
+      const message = JSON.parse(raw.toString());
+      if (message.type === "input" && typeof message.data === "string") {
+        terminal.write(message.data.slice(0, 8_000));
+      } else if (message.type === "resize") {
+        const cols = Math.max(40, Math.min(240, Number(message.cols) || 120));
+        const rows = Math.max(12, Math.min(80, Number(message.rows) || 32));
+        terminal.resize(cols, rows);
+      }
+    } catch {
+      terminalJson(ws, { type: "error", message: "Invalid terminal message." });
+    }
+  });
+  ws.on("close", () => closeTerminal(ws, terminal, expiryTimer));
+
+  terminalJson(ws, {
+    type: "ready",
+    sessionId,
+    cwd: workspace,
+    warning: "Trusted-LAN MVP terminal. Commands run as the session server user.",
+  });
+});
+
+server.on("upgrade", (req, socket, head) => {
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  if (url.pathname !== "/ws/terminal") {
+    socket.destroy();
+    return;
+  }
+  terminalWss.handleUpgrade(req, socket, head, (ws) => terminalWss.emit("connection", ws, req));
 });
 
 server.listen(PORT, "0.0.0.0", () => {

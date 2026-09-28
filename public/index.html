@@ -118,19 +118,40 @@
           </div>
         </div>
 
-        <div id="emptyState" class="empty-state">
-          <div class="bubble-art"><span></span><span></span></div>
-          <h3>Start a compute session</h3>
-          <p>Launch an instance to begin chatting with your selected AI runtime.</p>
+        <div class="mode-tabs" role="tablist" aria-label="Workspace mode">
+          <button id="chatModeButton" class="mode-tab active" type="button" role="tab" aria-selected="true">Chat</button>
+          <button id="terminalModeButton" class="mode-tab" type="button" role="tab" aria-selected="false">Terminal</button>
         </div>
 
-        <div id="messages" class="messages hidden" aria-live="polite"></div>
+        <div id="chatView" class="mode-view">
+          <div id="emptyState" class="empty-state">
+            <div class="bubble-art"><span></span><span></span></div>
+            <h3>Start a compute session</h3>
+            <p>Launch an instance to begin chatting with your selected AI runtime.</p>
+          </div>
 
-        <form id="chatForm" class="composer">
-          <textarea id="prompt" rows="1" maxlength="4000" placeholder="Type your message..." disabled></textarea>
-          <button id="sendButton" class="send-button" type="submit" disabled aria-label="Send message">➤</button>
-        </form>
-        <div id="chatNote" class="chat-note"></div>
+          <div id="messages" class="messages hidden" aria-live="polite"></div>
+
+          <form id="chatForm" class="composer">
+            <textarea id="prompt" rows="1" maxlength="4000" placeholder="Type your message..." disabled></textarea>
+            <button id="sendButton" class="send-button" type="submit" disabled aria-label="Send message">➤</button>
+          </form>
+          <div id="chatNote" class="chat-note"></div>
+        </div>
+
+        <div id="terminalView" class="mode-view hidden">
+          <div class="terminal-banner">
+            <strong>Session terminal</strong>
+            <span>Run Ollama, Python, Node, Git, and project commands in your session workspace.</span>
+          </div>
+          <pre id="terminalOutput" class="terminal-output" aria-live="polite">Launch a session to open the terminal.</pre>
+          <form id="terminalForm" class="terminal-composer">
+            <span class="terminal-prompt">$</span>
+            <input id="terminalInput" type="text" autocomplete="off" spellcheck="false" placeholder="ollama ps" disabled />
+            <button id="terminalSend" class="send-button" type="submit" disabled aria-label="Run terminal command">➤</button>
+          </form>
+          <div id="terminalNote" class="chat-note">Trusted-LAN MVP: commands run as the session server user.</div>
+        </div>
       </article>
     </section>
 

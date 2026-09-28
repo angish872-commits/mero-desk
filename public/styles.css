@@ -189,6 +189,77 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
   justify-content: space-between;
   gap: 20px;
 }
+
+.mode-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin: 22px 26px 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(3, 8, 18, 0.55);
+}
+.mode-tab {
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 15px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 800;
+  font-size: 12px;
+}
+.mode-tab.active {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(67, 133, 255, 0.8), rgba(92, 104, 255, 0.8));
+}
+.mode-view { min-height: 390px; }
+.terminal-view { padding: 20px 26px 26px; }
+.terminal-banner {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.terminal-banner strong { color: #d9e4ff; font-size: 14px; }
+.terminal-output {
+  height: 330px;
+  overflow: auto;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid rgba(77, 240, 168, 0.20);
+  border-radius: 15px;
+  color: #b5ffd9;
+  background: #02070d;
+  font: 12px/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.terminal-composer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 0 12px;
+  border: 1px solid rgba(143, 166, 211, 0.22);
+  border-radius: 14px;
+  background: rgba(5, 11, 21, 0.86);
+}
+.terminal-prompt {
+  color: var(--green);
+  font: 700 15px "SFMono-Regular", Consolas, monospace;
+}
+.terminal-composer input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  padding: 15px 0;
+  color: #fff;
+  background: transparent;
+  font: 13px "SFMono-Regular", Consolas, monospace;
+}
 .card h2, .chat-card h2 {
   margin: 8px 0 0;
   font-size: 25px;

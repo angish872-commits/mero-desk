@@ -17,12 +17,23 @@ const chatForm = $("#chatForm");
 const prompt = $("#prompt");
 const sendButton = $("#sendButton");
 const chatNote = $("#chatNote");
+const chatView = $("#chatView");
+const terminalView = $("#terminalView");
+const chatModeButton = $("#chatModeButton");
+const terminalModeButton = $("#terminalModeButton");
+const terminalOutput = $("#terminalOutput");
+const terminalForm = $("#terminalForm");
+const terminalInput = $("#terminalInput");
+const terminalSend = $("#terminalSend");
+const terminalNote = $("#terminalNote");
 
 let runtime = "llama.cpp";
 let durationMinutes = 1;
 let currentSession = null;
 let timer = null;
 let demoUser = null;
+let terminalSocket = null;
+let activeView = "chat";
 
 function runtimeLabel(value) {
   if (value === "llama.cpp") return "Ollama";
@@ -94,6 +105,78 @@ function formatCountdown(milliseconds) {
   return `${mins}:${secs}`;
 }
 
+function appendTerminal(text) {
+  terminalOutput.textContent += text;
+  terminalOutput.scrollTop = terminalOutput.scrollHeight;
+}
+
+function disconnectTerminal(message = "Terminal disconnected.") {
+  if (terminalSocket) {
+    terminalSocket.close();
+    terminalSocket = null;
+  }
+  terminalInput.disabled = true;
+  terminalSend.disabled = true;
+  terminalNote.textContent = message;
+}
+
+function connectTerminal() {
+  if (!currentSession || terminalSocket) return;
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  const endpoint = `${protocol}://${location.host}/ws/terminal?sessionId=${encodeURIComponent(currentSession.id)}`;
+  terminalOutput.textContent = "Connecting to the session terminal…\n";
+  terminalNote.textContent = "Connecting…";
+  terminalSocket = new WebSocket(endpoint);
+
+  terminalSocket.addEventListener("open", () => {
+    terminalInput.disabled = false;
+    terminalSend.disabled = false;
+    terminalNote.textContent = "Connected. Try: ollama ps, ollama list, python3, npm, or git.";
+    terminalInput.focus();
+    terminalSocket.send(JSON.stringify({ type: "resize", cols: 120, rows: 32 }));
+  });
+  terminalSocket.addEventListener("message", (event) => {
+    const raw = String(event.data || "");
+    try {
+      const message = JSON.parse(raw);
+      if (message.type === "ready") {
+        appendTerminal(`\r\n[Mero Desk workspace: ${message.cwd}]\r\n`);
+        return;
+      }
+      if (message.type === "error") appendTerminal(`\r\n[terminal error] ${message.message}\r\n`);
+      if (message.type === "expired") {
+        appendTerminal(`\r\n[${message.message}]\r\n`);
+        terminalInput.disabled = true;
+        terminalSend.disabled = true;
+      }
+    } catch {
+      appendTerminal(raw);
+    }
+  });
+  terminalSocket.addEventListener("close", () => {
+    terminalSocket = null;
+    terminalInput.disabled = true;
+    terminalSend.disabled = true;
+    terminalNote.textContent = "Terminal closed because the session ended.";
+  });
+  terminalSocket.addEventListener("error", () => {
+    terminalNote.textContent = "Terminal connection failed.";
+  });
+}
+
+function setWorkspaceMode(mode) {
+  activeView = mode;
+  const terminal = mode === "terminal";
+  chatView.classList.toggle("hidden", terminal);
+  terminalView.classList.toggle("hidden", !terminal);
+  chatModeButton.classList.toggle("active", !terminal);
+  terminalModeButton.classList.toggle("active", terminal);
+  chatModeButton.setAttribute("aria-selected", String(!terminal));
+  terminalModeButton.setAttribute("aria-selected", String(terminal));
+  if (terminal && currentSession) connectTerminal();
+  if (!terminal) prompt.focus();
+}
+
 function renderSession() {
   const running = Boolean(currentSession);
   emptyState.classList.toggle("hidden", running);
@@ -101,10 +184,13 @@ function renderSession() {
   endButton.classList.toggle("hidden", !running);
   prompt.disabled = !running;
   sendButton.disabled = !running;
+  terminalInput.disabled = !running || !terminalSocket;
+  terminalSend.disabled = !running || !terminalSocket;
 
   if (!running) {
     chatRuntime.textContent = "Not running";
     countdown.textContent = "--:--";
+    disconnectTerminal("Launch a session to open the terminal.");
     return;
   }
 
@@ -122,6 +208,7 @@ function startTimer() {
 
     if (remaining <= 0) {
       clearInterval(timer);
+      disconnectTerminal("Session expired. The terminal is closed.");
       currentSession = null;
       setStatus("AVAILABLE");
       renderSession();
@@ -131,6 +218,17 @@ function startTimer() {
   update();
   timer = setInterval(update, 250);
 }
+
+chatModeButton.addEventListener("click", () => setWorkspaceMode("chat"));
+terminalModeButton.addEventListener("click", () => setWorkspaceMode("terminal"));
+
+terminalForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const command = terminalInput.value.trim();
+  if (!command || !terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) return;
+  terminalSocket.send(JSON.stringify({ type: "input", data: `${command}\r` }));
+  terminalInput.value = "";
+});
 
 function addMessage(role, text) {
   const row = document.createElement("div");
@@ -183,7 +281,8 @@ launchButton.addEventListener("click", async () => {
     chatNote.textContent = "";
     renderSession();
     document.querySelector(".chat-card").scrollIntoView({ behavior: "smooth", block: "start" });
-    prompt.focus();
+    if (activeView === "terminal") connectTerminal();
+    else prompt.focus();
   } catch (error) {
     launchNote.textContent = error.message;
     launchButton.disabled = false;
@@ -194,6 +293,7 @@ endButton.addEventListener("click", async () => {
   try {
     await fetch("/api/stop", { method: "POST" });
   } finally {
+    disconnectTerminal("Session ended. Launch a new session to reopen the terminal.");
     currentSession = null;
     clearInterval(timer);
     setStatus("AVAILABLE");
@@ -260,3 +360,4 @@ async function refreshStatus() {
 
 refreshStatus();
 setInterval(refreshStatus, 4000);
+window.addEventListener("beforeunload", () => terminalSocket?.close());

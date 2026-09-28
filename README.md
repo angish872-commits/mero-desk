@@ -9,8 +9,9 @@ A minimal web MVP for renting a local AI compute server for short sessions.
 3. Choose runtime: Ollama or OpenCode
 4. Choose 1, 2, 3, or 5 minutes
 5. Launch a temporary session
-6. Chat with the selected AI runtime
-7. Session expires and the server returns to AVAILABLE
+6. Use Chat or the session Terminal
+7. Run Ollama, Python, Node, Git, and project commands in the session workspace
+8. Session expires and the server returns to AVAILABLE
 
 The app is intentionally localhost-first and does not expose SSH access to end users.
 
@@ -30,6 +31,11 @@ The Edge Function owns session launch/stop/status/expiry and chat-message persis
 The Node backend keeps Supabase credentials and the SSH connection server-side. Ollama is
 called through its local OpenAI-compatible endpoint. OpenCode is called through the local
 OpenCode CLI in JSON mode, so the MVP does not require an OpenCode cloud key.
+
+The Terminal mode is a trusted-LAN MVP feature. It starts a shell as the configured server
+user in a session-specific workspace and closes it when the session ends. It is not a public
+multi-tenant sandbox yet; production rental requires per-session containers or VMs, quotas,
+network controls, authentication, and audit logging.
 
 ## Run
 
