@@ -248,6 +248,42 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/api/launch") {
+      if (currentSession) {
+        return json(res, 409, { error: "The server is already in use." });
+      }
+
+      const body = await readJson(req);
+      const durationMinutes = Number(body.durationMinutes);
+      const runtime = String(body.runtime || "");
+      const userLabel = String(body.userLabel || "demo-user").slice(0, 80);
+
+      if (![1, 2, 3, 5].includes(durationMinutes)) {
+        return json(res, 400, { error: "Duration must be 1, 2, 3, or 5 minutes." });
+      }
+      if (!["llama.cpp", "opencode"].includes(runtime)) {
+        return json(res, 400, { error: "Unsupported runtime." });
+      }
+
+      const launched = await liveState("launch", {
+        method: "POST",
+        body: { runtime, durationMinutes, userLabel },
+      });
+
+      const dbSession = launched.session;
+      currentSession = {
+        id: dbSession.id,
+        userLabel: dbSession.user_label,
+        runtime: dbSession.runtime,
+        durationMinutes: dbSession.duration_minutes,
+        status: dbSession.status,
+        startedAt: new Date(dbSession.started_at).getTime(),
+        expiresAt: new Date(dbSession.expires_at).getTime(),
+      };
+
+      return json(res, 201, { session: currentSession });
+    }
+
+    if (req.method === "POST" && req.url === "/api/stop") {
       await liveState("stop", { method: "POST", body: {} });
       currentSession = null;
       return json(res, 200, { ok: true });
