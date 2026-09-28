@@ -40,9 +40,24 @@ create index if not exists compute_sessions_server_idx
 create index if not exists chat_messages_session_idx
   on public.chat_messages(session_id, created_at);
 
+create unique index if not exists compute_sessions_one_running_idx
+  on public.compute_sessions(server_id)
+  where status = 'RUNNING';
+
 alter table public.servers enable row level security;
 alter table public.compute_sessions enable row level security;
 alter table public.chat_messages enable row level security;
+
+-- The browser uses the Node backend, so direct Data API access is explicitly denied.
+drop policy if exists "backend only servers" on public.servers;
+drop policy if exists "backend only compute sessions" on public.compute_sessions;
+drop policy if exists "backend only chat messages" on public.chat_messages;
+create policy "backend only servers" on public.servers
+  for all to anon, authenticated using (false) with check (false);
+create policy "backend only compute sessions" on public.compute_sessions
+  for all to anon, authenticated using (false) with check (false);
+create policy "backend only chat messages" on public.chat_messages
+  for all to anon, authenticated using (false) with check (false);
 
 -- The MVP browser talks only to our Node backend.
 -- No anon/authenticated Data API access is needed.

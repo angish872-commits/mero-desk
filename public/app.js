@@ -24,6 +24,10 @@ let currentSession = null;
 let timer = null;
 let demoUser = null;
 
+function runtimeLabel(value) {
+  return value === "llama.cpp" ? "Ollama" : value;
+}
+
 try {
   demoUser = JSON.parse(localStorage.getItem("metrodex_demo_user") || "null");
 } catch {
@@ -102,7 +106,7 @@ function renderSession() {
     return;
   }
 
-  chatRuntime.textContent = currentSession.runtime;
+  chatRuntime.textContent = runtimeLabel(currentSession.runtime);
   setStatus("BUSY");
   startTimer();
 }
@@ -171,7 +175,7 @@ launchButton.addEventListener("click", async () => {
     messages.replaceChildren();
     addMessage(
       "assistant",
-      `Session ready on ${currentSession.runtime}. You have ${currentSession.durationMinutes} minute${currentSession.durationMinutes === 1 ? "" : "s"}.`
+      `Session ready on ${runtimeLabel(currentSession.runtime)}. You have ${currentSession.durationMinutes} minute${currentSession.durationMinutes === 1 ? "" : "s"}.`
     );
     launchNote.textContent = "Compute session is running.";
     chatNote.textContent = "";

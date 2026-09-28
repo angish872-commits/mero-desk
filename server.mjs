@@ -1,6 +1,7 @@
 import http from "node:http";
 import path from "node:path";
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 
@@ -33,10 +34,11 @@ async function loadEnvFile() {
 await loadEnvFile();
 
 const PORT = Number(process.env.PORT || 3000);
-const LLAMA_URL = (process.env.LLAMA_URL || "").replace(/\/$/, "");
-const LLAMA_MODEL = process.env.LLAMA_MODEL || "local-model";
-const OPENCODE_API_KEY = process.env.OPENCODE_API_KEY || "";
-const OPENCODE_MODEL = process.env.OPENCODE_MODEL || "gpt-5.6-luna";
+const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.LLAMA_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || process.env.LLAMA_MODEL || "qwen3:8b";
+const OPENCODE_BIN = process.env.OPENCODE_BIN || "/home/movefule/.opencode/bin/opencode";
+const OPENCODE_MODEL = process.env.OPENCODE_MODEL || "opencode/big-pickle";
+const OPENCODE_TIMEOUT_MS = Number(process.env.OPENCODE_TIMEOUT_MS || 45_000);
 const SUPABASE_STATE_URL = (process.env.SUPABASE_STATE_URL || "https://fjzoyuovtadmjdvrline.supabase.co/functions/v1/metrodex-state").replace(/\/$/, "");
 
 
@@ -112,81 +114,78 @@ async function expireIfNeeded() {
   }
 }
 
-function extractOpenAIText(data) {
-  if (typeof data?.output_text === "string" && data.output_text) {
-    return data.output_text;
-  }
-  const chunks = [];
-  for (const item of data?.output || []) {
-    for (const part of item?.content || []) {
-      if (part?.type === "output_text" && typeof part.text === "string") {
-        chunks.push(part.text);
-      }
-    }
-  }
-  return chunks.join("\n").trim();
-}
-
-async function askLlama(message) {
-  if (!LLAMA_URL) {
-    return {
-      text: "llama.cpp is not connected yet. Set LLAMA_URL in .env.local to your local OpenAI-compatible llama.cpp server.",
-      demo: true,
-    };
-  }
-
-  const response = await fetch(`${LLAMA_URL}/v1/chat/completions`, {
+async function askOllama(message) {
+  const response = await fetch(`${OLLAMA_URL}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: LLAMA_MODEL,
+      model: OLLAMA_MODEL,
       messages: [
         {
           role: "system",
-          content: "You are the Metrodex compute demo assistant. Be concise and useful.",
+          content: "You are the Mero Desk compute assistant. Be concise and useful.",
         },
         { role: "user", content: message },
       ],
       temperature: 0.7,
+      stream: false,
+      max_tokens: 512,
     }),
   });
 
-  if (!response.ok) throw new Error(`llama.cpp returned HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status}`);
   const data = await response.json();
-  const text = data?.choices?.[0]?.message?.content;
-  if (!text) throw new Error("llama.cpp returned no assistant text");
+  const text = data?.choices?.[0]?.message?.content || data?.message?.content;
+  if (!text) throw new Error("Ollama returned no assistant text");
   return { text, demo: false };
 }
 
+function parseOpenCodeOutput(stdout) {
+  const text = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event.type === "text" && typeof event.text === "string") text.push(event.text);
+      if (event.part?.type === "text" && typeof event.part.text === "string") text.push(event.part.text);
+    } catch {
+      // OpenCode's JSON mode can emit terminal noise; only structured text events are user output.
+    }
+  }
+  return text.join("\n").trim();
+}
+
 async function askOpenCode(message) {
-  if (!OPENCODE_API_KEY) {
-    return {
-      text: "OpenCode Go is not connected yet. Put OPENCODE_API_KEY in .env.local to enable the cloud runtime.",
-      demo: true,
-    };
-  }
+  return new Promise((resolve, reject) => {
+    const child = spawn(OPENCODE_BIN, ["run", "--format", "json", "--model", OPENCODE_MODEL, message], {
+      cwd: process.env.OPENCODE_CWD || __dirname,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
-  const response = await fetch("https://opencode.ai/zen/go/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENCODE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: OPENCODE_MODEL,
-      input: message,
-    }),
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error("OpenCode timed out."));
+    }, OPENCODE_TIMEOUT_MS);
+
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(new Error(`OpenCode could not start: ${error.message}`));
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      const text = parseOpenCodeOutput(stdout);
+      if (code !== 0 || !text) {
+        reject(new Error(`OpenCode failed${stderr.trim() ? `: ${stderr.trim().slice(-240)}` : "."}`));
+        return;
+      }
+      resolve({ text, demo: false });
+    });
   });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`OpenCode ${response.status}: ${detail.slice(0, 240)}`);
-  }
-
-  const data = await response.json();
-  const text = extractOpenAIText(data);
-  if (!text) throw new Error("OpenCode returned no text");
-  return { text, demo: false };
 }
 
 async function serveStatic(req, res) {
@@ -232,8 +231,10 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         persistence: "supabase-live",
-        llamaConfigured: Boolean(LLAMA_URL),
-        opencodeConfigured: Boolean(OPENCODE_API_KEY),
+        ollamaConfigured: Boolean(OLLAMA_URL),
+        ollamaModel: OLLAMA_MODEL,
+        opencodeConfigured: Boolean(OPENCODE_BIN),
+        opencodeModel: OPENCODE_MODEL,
       });
     }
 
@@ -302,14 +303,14 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { error: "Message is too long for the MVP." });
       }
 
-      await persistMessage(currentSession.id, "user", message).catch(() => {});
+      await persistMessage(currentSession.id, "user", message);
 
       const answer =
         currentSession.runtime === "opencode"
           ? await askOpenCode(message)
-          : await askLlama(message);
+          : await askOllama(message);
 
-      await persistMessage(currentSession.id, "assistant", answer.text).catch(() => {});
+      await persistMessage(currentSession.id, "assistant", answer.text);
 
       return json(res, 200, answer);
     }

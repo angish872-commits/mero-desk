@@ -1,0 +1,15 @@
+[Unit]
+Description=Mero Desk MVP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/movefule/mero-desk-mvp
+ExecStart=/usr/bin/node /home/movefule/mero-desk-mvp/server.mjs
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
