@@ -8,7 +8,7 @@ A localhost-first class demo that shows one local compute server being rented fo
 
 1. User enters a lightweight demo login.
 2. Dashboard shows Metrodex GPU-01 as AVAILABLE.
-3. User selects llama.cpp or OpenAI.
+3. User selects llama.cpp or OpenCode.
 4. User selects 1, 2, 3, or 5 minutes.
 5. Backend creates one compute session and marks the node BUSY.
 6. AI Chat becomes active.
@@ -21,10 +21,10 @@ Browser
 → Node HTTP backend
 → Runtime adapter
    → llama.cpp on the local server
-   → OpenAI Responses API
+   → OpenCode Responses API
 → Optional Supabase persistence
 
-The browser never gets SSH credentials, an OpenAI API key, or a Supabase secret key.
+The browser never gets SSH credentials, an OpenCode API key, or a Supabase secret key.
 
 ## Current API
 
@@ -50,8 +50,8 @@ RLS is enabled on every public table and anon/authenticated access is revoked. T
 PORT=3000
 LLAMA_URL=http://127.0.0.1:8080
 LLAMA_MODEL=local-model
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5.6-luna
+OPENCODE_API_KEY=
+OPENCODE_MODEL=gpt-5.6-luna
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=
 ```
