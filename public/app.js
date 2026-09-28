@@ -25,7 +25,9 @@ let timer = null;
 let demoUser = null;
 
 function runtimeLabel(value) {
-  return value === "llama.cpp" ? "Ollama" : value;
+  if (value === "llama.cpp") return "Ollama";
+  if (value === "opencode") return "OpenCode";
+  return value;
 }
 
 try {
